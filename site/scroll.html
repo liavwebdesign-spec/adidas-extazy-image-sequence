@@ -39,8 +39,6 @@
   header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
     padding:clamp(18px,2.4vw,32px) clamp(20px,3.5vw,56px);pointer-events:none}
   header .brand{font-family:var(--head);font-weight:700;font-size:clamp(20px,1.6vw,26px);letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:12px;direction:ltr}
-  header .brand svg{width:30px;height:20px;flex:none;fill:none;stroke:var(--fg);stroke-width:2.6;
-    stroke-linecap:square;stroke-linejoin:miter}
   header nav{display:flex;gap:clamp(16px,2.4vw,36px);font-family:var(--body);font-size:13px;letter-spacing:.08em;color:var(--muted);font-weight:400;pointer-events:auto}
   header nav span{cursor:pointer;position:relative;padding-bottom:4px;transition:color .25s}
   header nav span::after{content:"";position:absolute;bottom:0;inset-inline-start:0;width:0;height:1px;background:var(--lime);transition:width .3s var(--ease)}
@@ -144,8 +142,7 @@
 <div id="spacer"></div>
 
 <header>
-  <div class="brand">
-    <svg viewBox="0 0 30 20" aria-hidden="true"><path d="M2 2 L11 18 L20 2" /><path d="M17 18 L28 18" /><path d="M21 13 L28 13" /></svg>VELOX</div>
+  <div class="brand">VELOX</div>
   <nav>
     <span data-goto="5">ריצה</span>
     <span data-goto="2">טכנולוגיה</span>
