@@ -1,0 +1,12 @@
+# Source footage is not committed: the extracted frames in site/frames/ are what
+# the site actually loads. Drop 1.mp4 .. 10.mp4 + the opening still back in the
+# project root and run build-frames.sh to regenerate them.
+*.mp4
+/*.png
+/*.mov
+
+# OS / editor noise
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
