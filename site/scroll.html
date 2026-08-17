@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>ADIDAS EXTAZY | גלילה מלאה</title>
-<meta name="description" content="ADIDAS EXTAZY. נעל ריצה שתוכננה למהירות, לנוחות וליעילות ריצה. גללו לאט כדי להתקדם פריים אחר פריים.">
+<title>VELOX KADENS | גלילה מלאה</title>
+<meta name="description" content="VELOX KADENS. נעל ריצה שתוכננה למהירות, לנוחות וליעילות ריצה. גללו לאט כדי להתקדם פריים אחר פריים.">
 <style>
   /* ===== FONTS ===== */
   @font-face{font-family:'Reisinger Neta';src:url('fonts/Reisinger-Neta-Bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
@@ -39,8 +39,8 @@
   header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
     padding:clamp(18px,2.4vw,32px) clamp(20px,3.5vw,56px);pointer-events:none}
   header .brand{font-family:var(--head);font-weight:700;font-size:clamp(20px,1.6vw,26px);letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:12px;direction:ltr}
-  header .brand i{display:inline-block;width:26px;height:16px;background:
-      linear-gradient(115deg,transparent 0 12%,var(--fg) 12% 30%,transparent 30% 42%,var(--fg) 42% 60%,transparent 60% 72%,var(--fg) 72% 90%,transparent 90%);}
+  header .brand svg{width:30px;height:20px;flex:none;fill:none;stroke:var(--fg);stroke-width:2.6;
+    stroke-linecap:square;stroke-linejoin:miter}
   header nav{display:flex;gap:clamp(16px,2.4vw,36px);font-family:var(--body);font-size:13px;letter-spacing:.08em;color:var(--muted);font-weight:400;pointer-events:auto}
   header nav span{cursor:pointer;position:relative;padding-bottom:4px;transition:color .25s}
   header nav span::after{content:"";position:absolute;bottom:0;inset-inline-start:0;width:0;height:1px;background:var(--lime);transition:width .3s var(--ease)}
@@ -144,21 +144,22 @@
 <div id="spacer"></div>
 
 <header>
-  <div class="brand"><i></i>adidas</div>
+  <div class="brand">
+    <svg viewBox="0 0 30 20" aria-hidden="true"><path d="M2 2 L11 18 L20 2" /><path d="M17 18 L28 18" /><path d="M21 13 L28 13" /></svg>VELOX</div>
   <nav>
     <span data-goto="5">ריצה</span>
     <span data-goto="2">טכנולוגיה</span>
     <span data-goto="9">סיפורים</span>
-    <span data-goto="10">EXTAZY</span>
+    <span data-goto="10">KADENS</span>
   </nav>
 </header>
 
 <!-- ===== TEXT LAYERS (one per scene, index 0..10) ===== -->
 <section class="layer" id="intro" data-scene="0">
   <div class="kicker">מציגים</div>
-  <h1><em>EXTAZY</em></h1>
+  <h1><em>KADENS</em></h1>
   <div class="sub">לרוץ מהר יותר. להרגיש פחות.</div>
-  <p>נעל הריצה החדשה של אדידס, שתוכננה סביב שלושה דברים בלבד: מהירות, נוחות ויעילות ריצה. גללו לאט, ותראו כל פריים בדרך.</p>
+  <p>נעל הריצה החדשה של VELOX, שתוכננה סביב שלושה דברים בלבד: מהירות, נוחות ויעילות ריצה. גללו לאט, ותראו כל פריים בדרך.</p>
 </section>
 
 <section class="layer" data-scene="1">
@@ -183,7 +184,7 @@
 <section class="layer center" data-scene="4">
   <div class="kicker">04</div>
   <h2>המהירות מתחילה<br><em>לפני</em> הזינוק</h2>
-  <p>EXTAZY נבנתה בשביל הרגע שבו אתם מחליטים לזוז. קלים יותר על הרגליים, קלים יותר בראש.</p>
+  <p>KADENS נבנתה בשביל הרגע שבו אתם מחליטים לזוז. קלים יותר על הרגליים, קלים יותר בראש.</p>
 </section>
 
 <section class="layer" data-scene="5">
@@ -218,11 +219,11 @@
 </section>
 
 <section class="layer center" data-scene="10">
-  <div class="kicker">adidas EXTAZY</div>
+  <div class="kicker">VELOX KADENS</div>
   <h2>לרוץ <em>מהר יותר.</em><br>להרגיש פחות.</h2>
   <p>זמינה עכשיו בצבע ההשקה Lime Pulse. מהדורה ראשונה בכמות מוגבלת.</p>
   <div>
-    <button class="cta" onclick="alert('אתר הדגמה. אין חנות מחוברת.')">לרכישת EXTAZY
+    <button class="cta" onclick="alert('אתר הדגמה. אין חנות מחוברת.')">לרכישת KADENS
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 5l-7 7 7 7"/></svg></button>
     <button class="cta ghost" onclick="app.restart()">לצפייה מהתחלה</button>
   </div>
@@ -235,7 +236,7 @@
 <div id="buffer"><i></i>טוען פריימים</div>
 
 <div id="loader">
-  <div class="word">adidas <em>Extazy</em></div>
+  <div class="word">VELOX <em>Kadens</em></div>
   <div class="bar"><i id="loadbar"></i></div>
   <small id="loadtxt">טוען את החוויה</small>
 </div>
