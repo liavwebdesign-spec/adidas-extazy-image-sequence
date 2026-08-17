@@ -278,10 +278,18 @@ const loadtxt = document.getElementById('loadtxt');
 const navItems = [...document.querySelectorAll('header nav span[data-goto]')];
 
 /* Two tiers per scene. `lo` is a small proxy that covers the whole timeline
-   quickly so scrubbing always has *a* frame; `hi` replaces it as it lands. */
-const store = { hi:{}, lo:{} };     /* store.hi[scene][frame] = decoded bitmap */
+   quickly so scrubbing always has *a* frame; `hi` replaces it as it lands.
+   Frames are stored as <img>, i.e. compressed bytes the browser is free to
+   evict. They must never be held as ImageBitmap: 970 frames of 1280x720 RGBA
+   is 3.4GB of pixels the browser may not reclaim, which kills mobile tabs. */
+const store = { hi:{}, lo:{} };     /* store.hi[scene][frame] = HTMLImageElement */
 const loaded = { hi:{}, lo:{} };    /* loaded.hi[scene] = true once every frame is in */
 let opening = null;
+
+/* Phones stay on the proxy tier: 640x360 is past retina on a handset, and it
+   drops the download from 82MB to 14MB and the memory ceiling with it. */
+const LOW_POWER = innerWidth < 900 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+const USE_HI = !LOW_POWER;
 
 /* ---------- timeline ---------- */
 const scenePx = CONFIG.frames * CONFIG.pxPerFrame;
@@ -332,17 +340,23 @@ function loadImage(src){
     im.src = src;
   });
 }
-/* Download AND decode off the main thread. drawImage() on a raw <img> decodes
-   the JPEG synchronously the first time, which is a visible hitch mid-scrub;
-   an ImageBitmap is already GPU-ready. */
-async function loadFrame(src){
-  const im = await loadImage(src);
-  if(!im || !im.naturalWidth) return null;
-  if(window.createImageBitmap){
-    try{ return await createImageBitmap(im); }catch(e){}
+/* Decoding is warmed on a sliding window instead of up front, so the browser
+   keeps only the frames near the playhead in decoded form and can drop the
+   rest under pressure. decode() is idempotent and cheap once warm. */
+let decodeBusy = 0;
+function warmDecode(s, from){
+  const tier = (USE_HI && store.hi[s]) ? 'hi' : 'lo';
+  const arr = store[tier][s];
+  if(!arr) return;
+  for(let i=Math.max(0,from-2); i<Math.min(from+14, CONFIG.frames); i++){
+    if(decodeBusy >= 3) return;
+    const im = arr[i];
+    if(im && im.naturalWidth && !im.__warm){
+      im.__warm = 1;
+      decodeBusy++;
+      im.decode().catch(()=>{}).then(()=>{ decodeBusy--; });
+    }
   }
-  try{ await im.decode(); }catch(e){}
-  return im;
 }
 async function loadScene(s, tier, onProgress){
   const st = store[tier], ld = loaded[tier];
@@ -352,8 +366,8 @@ async function loadScene(s, tier, onProgress){
   const path = tier==='hi' ? CONFIG.path : CONFIG.pathLo;
   const tasks = [];
   for(let f=1; f<=CONFIG.frames; f++){
-    tasks.push(loadFrame(path(s,f)).then(bm=>{
-      if(bm) st[s][f-1] = bm;
+    tasks.push(loadImage(path(s,f)).then(im=>{
+      if(im && im.naturalWidth) st[s][f-1] = im;
       onProgress && onProgress();
       if(pending && pending.scene===s && pending.frame===f-1) render(true);
     }));
@@ -374,8 +388,10 @@ function buildQueue(cur){
   const order = [];
   for(let s=1; s<=CONFIG.scenes; s++) if(!loaded.lo[s]) order.push({s, tier:'lo'});
   const fwd=[], back=[];
-  for(let s=cur; s<=CONFIG.scenes; s++) if(!loaded.hi[s]) fwd.push({s, tier:'hi'});
-  for(let s=cur-1; s>=1; s--) if(!loaded.hi[s]) back.push({s, tier:'hi'});
+  if(USE_HI){
+    for(let s=cur; s<=CONFIG.scenes; s++) if(!loaded.hi[s]) fwd.push({s, tier:'hi'});
+    for(let s=cur-1; s>=1; s--) if(!loaded.hi[s]) back.push({s, tier:'hi'});
+  }
   /* lo of the *current* scene jumps ahead of everything */
   const curLo = order.findIndex(x=>x.s===cur);
   if(curLo>0) order.unshift(order.splice(curLo,1)[0]);
@@ -399,7 +415,7 @@ function prioritize(s){
 /* best available frame: exact hi, exact lo, else nearest of either tier.
    Scrubbing never draws blank. */
 function frameFor(s, idx){
-  const hi = store.hi[s], lo = store.lo[s];
+  const hi = USE_HI ? store.hi[s] : null, lo = store.lo[s];
   if(hi && hi[idx]) return {img:hi[idx], exact:true};
   if(lo && lo[idx]) return {img:lo[idx], exact:true};
   for(let d=1; d<CONFIG.frames; d++){
@@ -466,6 +482,7 @@ function render(redrawOnly){
   bufferPill.classList.toggle('show', !exact);
 
   if(redrawOnly) return;
+  warmDecode(s, frame);
 
   /* text reveal: fades in near the scene end, stays through the hold */
   const revealed = local >= CONFIG.revealAt;
@@ -526,9 +543,9 @@ function restart(){ scrollTo({top:0, behavior:'auto'}); viewY = 0; render(); }
   let done = 0;
   const total = CONFIG.frames + 1;
   const prog = ()=>{ done++; loadbar.style.width = Math.min(100,Math.round(done/total*100))+'%'; };
-  opening = await loadFrame(CONFIG.opening); prog();
+  opening = await loadImage(CONFIG.opening); prog();
   loadtxt.textContent = 'מכין את הסצנה הראשונה';
-  await loadScene(1, 'hi', prog);
+  await loadScene(1, USE_HI ? 'hi' : 'lo', prog);
 
   render();
   loader.classList.add('hidden');
