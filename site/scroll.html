@@ -76,7 +76,7 @@
   .layer .kicker{font-family:var(--body);font-size:clamp(12px,.95vw,14px);letter-spacing:.16em;color:var(--lime);font-weight:500;margin-bottom:14px;display:flex;align-items:center;gap:14px}
   .layer .kicker::before{content:"";width:34px;height:1px;background:var(--lime);flex:none}
   .layer h1,.layer h2{font-family:var(--head);font-weight:500;line-height:.98;letter-spacing:-.005em;
-    font-size:clamp(42px,7.6vw,118px);max-width:16ch;
+    font-size:clamp(42px,7.6vw,118px);max-width:16ch;color:var(--fg);
     text-shadow:0 1px 3px rgba(5,5,7,.34)}
   .layer p,.layer .kicker,.layer .sub,.layer .stat b,.layer .stat span{
     text-shadow:0 1px 2px rgba(5,5,7,.38)}
@@ -258,7 +258,8 @@ const CONFIG = {
   introPx: 620,       // scroll length of the opening still
   holdPx: 520,        // scroll length the last frame + text is held after each scene
   loopPx: 700,        // tail zone where scene 10 loops on its own
-  path: (s,f) => `frames/${s}/${String(f).padStart(3,'0')}.jpg`,
+  path:   (s,f) => `frames/${s}/${String(f).padStart(3,'0')}.jpg`,     // 1280x720, ~70KB
+  pathLo: (s,f) => `frames-lo/${s}/${String(f).padStart(3,'0')}.jpg`,  // 640x360, ~14KB proxy
   opening: 'opening.jpg',
   revealAt: .82,      // text starts fading in at this point inside a scene
 };
@@ -276,8 +277,10 @@ const loadbar = document.getElementById('loadbar');
 const loadtxt = document.getElementById('loadtxt');
 const navItems = [...document.querySelectorAll('header nav span[data-goto]')];
 
-const store = {};      /* store[scene] = Image[] */
-const loaded = {};     /* loaded[scene] = true once every frame is in */
+/* Two tiers per scene. `lo` is a small proxy that covers the whole timeline
+   quickly so scrubbing always has *a* frame; `hi` replaces it as it lands. */
+const store = { hi:{}, lo:{} };     /* store.hi[scene][frame] = decoded bitmap */
+const loaded = { hi:{}, lo:{} };    /* loaded.hi[scene] = true once every frame is in */
 let opening = null;
 
 /* ---------- timeline ---------- */
@@ -309,10 +312,11 @@ function resize(){
   if(lastImg) draw(lastImg);
 }
 function draw(img){
-  if(!img || !img.naturalWidth) return;
+  const iw = img && (img.width || img.naturalWidth), ih = img && (img.height || img.naturalHeight);
+  if(!iw || !ih) return;
   lastImg = img;
   const cw = canvas.width, ch = canvas.height;
-  const ir = img.naturalWidth/img.naturalHeight, cr = cw/ch;
+  const ir = iw/ih, cr = cw/ch;
   let dw, dh, dx, dy;
   if(cr > ir){ dw = cw; dh = cw/ir; dx = 0; dy = (ch-dh)/2; }
   else { dh = ch; dw = ch*ir; dy = 0; dx = (cw-dw)/2; }
@@ -324,40 +328,85 @@ function loadImage(src){
   return new Promise(res=>{
     const im = new Image();
     im.onload = ()=>res(im);
-    im.onerror = ()=>res(im);
+    im.onerror = ()=>res(null);
     im.src = src;
   });
 }
-async function loadScene(s, onProgress){
-  if(loaded[s]) return store[s];
-  if(store[s] && store[s].__loading) return store[s].__loading;
-  store[s] = store[s] || [];
+/* Download AND decode off the main thread. drawImage() on a raw <img> decodes
+   the JPEG synchronously the first time, which is a visible hitch mid-scrub;
+   an ImageBitmap is already GPU-ready. */
+async function loadFrame(src){
+  const im = await loadImage(src);
+  if(!im || !im.naturalWidth) return null;
+  if(window.createImageBitmap){
+    try{ return await createImageBitmap(im); }catch(e){}
+  }
+  try{ await im.decode(); }catch(e){}
+  return im;
+}
+async function loadScene(s, tier, onProgress){
+  const st = store[tier], ld = loaded[tier];
+  if(ld[s]) return st[s];
+  if(st[s] && st[s].__loading) return st[s].__loading;
+  st[s] = st[s] || [];
+  const path = tier==='hi' ? CONFIG.path : CONFIG.pathLo;
   const tasks = [];
   for(let f=1; f<=CONFIG.frames; f++){
-    tasks.push(loadImage(CONFIG.path(s,f)).then(im=>{
-      store[s][f-1]=im;
+    tasks.push(loadFrame(path(s,f)).then(bm=>{
+      if(bm) st[s][f-1] = bm;
       onProgress && onProgress();
       if(pending && pending.scene===s && pending.frame===f-1) render(true);
     }));
   }
-  const p = Promise.all(tasks).then(()=>{ loaded[s]=true; return store[s]; });
-  store[s].__loading = p;
+  const p = Promise.all(tasks).then(()=>{ ld[s]=true; return st[s]; });
+  st[s].__loading = p;
   return p;
 }
-let bgQueue = [];
-async function bgPreload(){
-  for(let s=1; s<=CONFIG.scenes; s++) bgQueue.push(s);
-  while(bgQueue.length){ await loadScene(bgQueue.shift()); }
+
+/* Priority queue. Order is recomputed whenever the visitor changes scene:
+   proxies for everything first, then hi-res for the current scene, then
+   forward from it, then backward. One scene at a time so the scene the
+   visitor is actually looking at always has the whole pipe. */
+let queue = [];
+let pumping = false;
+let queueScene = 1;
+function buildQueue(cur){
+  const order = [];
+  for(let s=1; s<=CONFIG.scenes; s++) if(!loaded.lo[s]) order.push({s, tier:'lo'});
+  const fwd=[], back=[];
+  for(let s=cur; s<=CONFIG.scenes; s++) if(!loaded.hi[s]) fwd.push({s, tier:'hi'});
+  for(let s=cur-1; s>=1; s--) if(!loaded.hi[s]) back.push({s, tier:'hi'});
+  /* lo of the *current* scene jumps ahead of everything */
+  const curLo = order.findIndex(x=>x.s===cur);
+  if(curLo>0) order.unshift(order.splice(curLo,1)[0]);
+  queue = order.concat(fwd, back);
 }
-/* nearest already-decoded frame in a scene, so scrubbing never goes blank */
-function nearestLoaded(s, idx){
-  const arr = store[s]; if(!arr) return null;
-  for(let d=0; d<CONFIG.frames; d++){
-    const a = arr[idx-d], b = arr[idx+d];
-    if(a && a.naturalWidth) return a;
-    if(b && b.naturalWidth) return b;
+async function pump(){
+  if(pumping) return;
+  pumping = true;
+  while(queue.length){
+    const {s, tier} = queue.shift();
+    await loadScene(s, tier);
   }
-  return null;
+  pumping = false;
+}
+function prioritize(s){
+  if(s === queueScene && pumping) return;
+  queueScene = s;
+  buildQueue(s);
+  pump();
+}
+/* best available frame: exact hi, exact lo, else nearest of either tier.
+   Scrubbing never draws blank. */
+function frameFor(s, idx){
+  const hi = store.hi[s], lo = store.lo[s];
+  if(hi && hi[idx]) return {img:hi[idx], exact:true};
+  if(lo && lo[idx]) return {img:lo[idx], exact:true};
+  for(let d=1; d<CONFIG.frames; d++){
+    const cands = [hi&&hi[idx-d], hi&&hi[idx+d], lo&&lo[idx-d], lo&&lo[idx+d]];
+    for(const c of cands) if(c) return {img:c, exact:false};
+  }
+  return {img:null, exact:false};
 }
 
 /* ---------- scroll -> frame ---------- */
@@ -411,16 +460,10 @@ function render(redrawOnly){
   }
 
   pending = {scene:s, frame};
-  const img = store[s] && store[s][frame];
-  if(img && img.naturalWidth){
-    draw(img);
-    bufferPill.classList.remove('show');
-  }else{
-    const near = nearestLoaded(s, frame);
-    if(near) draw(near);
-    bufferPill.classList.add('show');
-    prioritize(s);
-  }
+  if(s !== queueScene) prioritize(s);
+  const {img, exact} = frameFor(s, frame);
+  if(img) draw(img);
+  bufferPill.classList.toggle('show', !exact);
 
   if(redrawOnly) return;
 
@@ -428,12 +471,6 @@ function render(redrawOnly){
   const revealed = local >= CONFIG.revealAt;
   setLayer(s, revealed ? 1 : 0);
   updateUI(s, local, y);
-}
-
-function prioritize(s){
-  if(loaded[s]) return;
-  bgQueue = bgQueue.filter(x=>x!==s);
-  loadScene(s).then(()=>{ if(pending && pending.scene===s) render(true); });
 }
 
 function setLayer(idx, on){
@@ -454,14 +491,21 @@ function updateUI(s, local, y){
    Native scroll sets the target; the rendered position eases toward it every
    frame. That decoupling is what makes the sequence glide instead of snapping,
    and it also powers the tail loop. Same idea as Lenis, without the dependency. */
-(function tick(){
+let lastT = 0;
+(function tick(t){
+  /* CONFIG.smooth is defined per 60Hz frame. Rescale it by the real elapsed
+     time so a 30Hz laptop, a 120Hz monitor and a throttled tab all ease at
+     the same speed instead of feeling sluggish or twitchy. */
+  const dt = lastT ? Math.min(t - lastT, 100) : 16.667;
+  lastT = t;
+  const k = 1 - Math.pow(1 - CONFIG.smooth, dt / 16.667);
   const target = Math.max(0, Math.min(scrollY, TOTAL));
   const d = target - viewY;
-  if(Math.abs(d) > .08) viewY += d * CONFIG.smooth;
+  if(Math.abs(d) > .08) viewY += d * k;
   else if(viewY !== target) viewY = target;
   render();
   requestAnimationFrame(tick);
-})();
+})(0);
 addEventListener('resize', ()=>{ resize(); render(); });
 
 /* ---------- nav ---------- */
@@ -482,13 +526,13 @@ function restart(){ scrollTo({top:0, behavior:'auto'}); viewY = 0; render(); }
   let done = 0;
   const total = CONFIG.frames + 1;
   const prog = ()=>{ done++; loadbar.style.width = Math.min(100,Math.round(done/total*100))+'%'; };
-  opening = await loadImage(CONFIG.opening); prog();
+  opening = await loadFrame(CONFIG.opening); prog();
   loadtxt.textContent = 'מכין את הסצנה הראשונה';
-  await loadScene(1, prog);
+  await loadScene(1, 'hi', prog);
 
   render();
   loader.classList.add('hidden');
-  bgPreload();
+  prioritize(1);   /* proxies for every scene, then hi-res radiating out from here */
 })();
 
 window.app = { restart, CONFIG, seg };
