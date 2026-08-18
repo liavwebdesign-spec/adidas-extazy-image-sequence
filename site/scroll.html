@@ -133,6 +133,66 @@
   #buffer.show{opacity:1}
   #buffer i{width:8px;height:8px;border-radius:50%;background:var(--lime);animation:pulse 1s infinite;flex:none}
   @keyframes pulse{50%{opacity:.2}}
+
+  /* =====================================================================
+     RESPONSIVE. Everything below is gated to phones and short viewports.
+     A desktop at 1280x720 matches none of these blocks. Values above are
+     the desktop design and are not touched.
+     ===================================================================== */
+
+  /* ---- phones (portrait and landscape), <= 640px wide ---- */
+  @media (max-width:640px){
+    header{padding:16px 20px}
+    header .brand{font-size:18px;letter-spacing:.12em}
+
+    /* text column: tighter frame, room for the home indicator */
+    .layer{padding:0 20px calc(72px + env(safe-area-inset-bottom,0px))}
+    .layer .kicker{font-size:11px;letter-spacing:.14em;margin-bottom:10px}
+    .layer .kicker::before{width:24px}
+    .layer h1,.layer h2{font-size:clamp(32px,9.6vw,42px);line-height:1.02;max-width:none}
+    .layer p{font-size:15px;line-height:1.55;margin-top:12px;max-width:none}
+    .layer .stat{gap:22px;margin-top:18px;flex-wrap:wrap}
+    .layer .stat b{font-size:26px}
+    .layer .stat span{font-size:11px;margin-top:4px}
+    /* the "left" scenes read fine mirrored on desktop; on a phone one
+       alignment keeps the rhythm and the scrim geometry consistent */
+    .layer.left{align-items:flex-start;text-align:right}
+    .layer.left .kicker{flex-direction:row}
+    .layer.left::before{
+      -webkit-mask-image:linear-gradient(to left,#000 0%,#000 64%,rgba(0,0,0,.4) 83%,transparent 98%);
+              mask-image:linear-gradient(to left,#000 0%,#000 64%,rgba(0,0,0,.4) 83%,transparent 98%)}
+    .layer.center{padding-bottom:0}
+
+    #intro h1{font-size:clamp(56px,17vw,80px)}
+    #intro .sub{font-size:18px;letter-spacing:.05em;margin-top:8px}
+
+    /* CTAs stack full-width instead of two uneven centred pills */
+    .ctas{display:flex;flex-direction:column;gap:12px;width:100%;max-width:340px;margin:26px auto 0}
+    .ctas .cta{width:100%;justify-content:center;margin:0;padding:16px 24px;font-size:17px}
+    .ctas .cta.ghost{margin-right:0}
+
+    #counter{inset-inline-end:20px;bottom:calc(16px + env(safe-area-inset-bottom,0px));font-size:14px}
+    #counter b{font-size:19px}
+    #rail{transform:translateY(-50%) translateY(-24px)}   /* clear the text block on tall phones */
+    #buffer{top:64px;font-size:11px;padding:7px 14px}
+    #loader .word{font-size:clamp(34px,10vw,48px)}
+    #loader .bar{width:min(240px,64vw)}
+  }
+
+  /* ---- short viewports: phones held sideways, small laptops in split view ---- */
+  @media (max-height:520px) and (max-width:1024px){
+    .layer{padding-bottom:40px;justify-content:flex-end}
+    .layer .kicker{margin-bottom:6px}
+    .layer h1,.layer h2{font-size:clamp(28px,6.5vh,44px);line-height:1}
+    .layer p{margin-top:8px;font-size:14px;line-height:1.45;max-width:52ch}
+    .layer .stat{margin-top:12px}
+    .layer .stat b{font-size:22px}
+    #intro h1{font-size:clamp(48px,14vh,90px)}
+    #intro .sub{font-size:16px;margin-top:6px}
+    .ctas{margin-top:16px}
+    .ctas .cta{padding:12px 22px;font-size:15px}
+    #rail{display:none}
+  }
 </style>
 </head>
 <body>
@@ -219,7 +279,7 @@
   <div class="kicker">VELOX KADENS</div>
   <h2>לרוץ <em>מהר יותר.</em><br>להרגיש פחות.</h2>
   <p>זמינה עכשיו בצבע ההשקה Lime Pulse. מהדורה ראשונה בכמות מוגבלת.</p>
-  <div>
+  <div class="ctas">
     <button class="cta" onclick="alert('אתר הדגמה. אין חנות מחוברת.')">לרכישת KADENS
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M11 5l-7 7 7 7"/></svg></button>
     <button class="cta ghost" onclick="app.restart()">לצפייה מהתחלה</button>
@@ -260,7 +320,9 @@ const CONFIG = {
   loopPx: 700,        // tail zone where scene 10 loops on its own
   path:   (s,f) => `frames/${s}/${String(f).padStart(3,'0')}.jpg`,     // 1280x720, ~70KB
   pathLo: (s,f) => `frames-lo/${s}/${String(f).padStart(3,'0')}.jpg`,  // 640x360, ~14KB proxy
+  pathPt: (s,f) => `frames-pt/${s}/${String(f).padStart(3,'0')}.jpg`,  // 405x720 centre crop, ~18KB, portrait phones
   opening: 'opening.jpg',
+  openingPt: 'opening-pt.jpg',
   revealAt: .82,      // text starts fading in at this point inside a scene
 };
 
@@ -290,6 +352,12 @@ let opening = null;
    drops the download from 82MB to 14MB and the memory ceiling with it. */
 const LOW_POWER = innerWidth < 900 || (navigator.deviceMemory && navigator.deviceMemory <= 4);
 const USE_HI = !LOW_POWER;
+/* A 16:9 frame cover-fitted into a phone in portrait shows ~26% of its width
+   and upscales the 640x360 proxy 2.3x. Portrait phones instead get a 9:16
+   centre crop at full 720 height: same bytes, twice the sharpness, nothing
+   drawn off-screen. Chosen once at boot; a rotation reloads to re-pick. */
+const PORTRAIT = LOW_POWER && (innerHeight / innerWidth) > 1.4;
+const proxyPath = PORTRAIT ? CONFIG.pathPt : CONFIG.pathLo;
 
 /* ---------- timeline ---------- */
 const scenePx = CONFIG.frames * CONFIG.pxPerFrame;
@@ -368,7 +436,7 @@ async function loadScene(s, tier, onProgress){
   if(ld[s]) return st[s];
   if(st[s] && st[s].__loading) return st[s].__loading;
   st[s] = st[s] || [];
-  const path = tier==='hi' ? CONFIG.path : CONFIG.pathLo;
+  const path = tier==='hi' ? CONFIG.path : proxyPath;
   const tasks = [];
   for(let f=1; f<=CONFIG.frames; f++){
     tasks.push(loadImage(path(s,f)).then(im=>{
@@ -557,6 +625,8 @@ addEventListener('resize', ()=>{
   const dw = Math.abs(innerWidth - lastW), dh = Math.abs(innerHeight - lastH);
   if(dw < 1 && dh < 160) return;
   lastW = innerWidth; lastH = innerHeight;
+  const nowPortrait = LOW_POWER && (innerHeight / innerWidth) > 1.4;
+  if(nowPortrait !== PORTRAIT){ location.reload(); return; }   /* frame set no longer matches */
   resize(); render(true);
 });
 
@@ -578,7 +648,7 @@ function restart(){ scrollTo({top:0, behavior:'auto'}); viewY = 0; render(); }
   let done = 0;
   const total = CONFIG.frames + 1;
   const prog = ()=>{ done++; loadbar.style.width = Math.min(100,Math.round(done/total*100))+'%'; };
-  opening = await loadImage(CONFIG.opening); prog();
+  opening = await loadImage(PORTRAIT ? CONFIG.openingPt : CONFIG.opening); prog();
   loadtxt.textContent = 'מכין את הסצנה הראשונה';
   await loadScene(1, USE_HI ? 'hi' : 'lo', prog);
 
